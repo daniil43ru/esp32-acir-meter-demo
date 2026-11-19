@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 ACIR Meter — milliohm-level 18650 IR measurement</title>
+<meta name="description" content="Open-source ESP32 internal-resistance meter for 18650 cells. Kelvin 4-wire sense, 1 kHz excitation, lock-in detection. Prototype: firmware + tests ready, hardware verification wanted.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ESP32 ACIR Meter — Kelvin 4-wire internal resistance">
+<meta property="og:description" content="Load-pulse DIY meters are off by ~50% on 18650 cells. This one measures the AC internal resistance with a Kelvin connection and a lock-in detector. Hardware verification wanted.">
+<meta property="og:url" content="https://daniil43ru.github.io/esp32-acir-meter/">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121922; --line:#243040; --txt:#e6edf5; --dim:#8b9bb4;
+    --accent:#39d353; --accent2:#58a6ff; --warn:#f0b72f; --danger:#ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(1200px 700px at 50% -20%, #12202e, #0b0f14 60%);
+    color: var(--text, #e6ecf5); font: 16px/1.65 -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #e6eaf2; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 24px 80px; }
+  .eyebrow { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.12; margin: 12px 0 14px; letter-spacing: -0.5px; }
+  h1 .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent2); }
+  .lead { font-size: 18px; color: #c3cfdf; max-width: 720px; margin: 0 0 26px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; }
+  .badge {
+    font-size: 12.5px; padding: 5px 11px; border-radius: 100px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--dim); font-family: ui-monospace, Consolas, monospace;
+  }
+  .badge.ok { color: var(--accent); border-color: rgba(57,211,83,.35); background: rgba(57,211,83,.08); }
+  .badge.warn { color: var(--warn); border-color: rgba(240,183,47,.35); background: rgba(240,183,47,.08); }
+  .badge.info { color: var(--accent2); border-color: rgba(88,166,255,.35); background: rgba(88,166,255,.08); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 44px; }
+  .btn {
+    display: inline-block; padding: 12px 20px; border-radius: 10px; text-decoration: none;
+    font-weight: 650; font-size: 15px; transition: transform .12s ease, background .12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); color: #06210c; }
+  .btn.ghost { border: 1px solid var(--line); color: #c3cfdf; background: var(--panel); }
+  h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+       margin: 48px 0 16px; font-weight: 700; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; }
+  pre {
+    background: #0d131b; border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+    overflow-x: auto; font: 13.5px/1.6 ui-monospace, Consolas, monospace; color: #b7c5d8; margin: 0;
+  }
+  pre .k { color: var(--accent2); } pre .c { color: #5b6b82; } pre .v { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2635; }
+  th { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  td.num { font-family: ui-monospace, Consolas, monospace; }
+  tr:last-child td { border-bottom: none; }
+  .grid { display: grid; gap: 14px; }
+  @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } .grid.three { grid-template-columns: repeat(3, 1fr); } }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .stat .v { font-family: ui-monospace, Consolas, monospace; font-size: 26px; color: var(--accent); font-weight: 700; }
+  .stat .l { font-size: 13px; color: var(--dim); margin-top: 4px; }
+  ul.tight { margin: 0; padding-left: 22px; }
+  ul.tight li { margin: 7px 0; color: #c3cfdf; }
+  ul.tight li b { color: #fff; font-weight: 600; }
+  .callout { border-left: 3px solid var(--warn); background: rgba(240,183,47,.07); padding: 16px 20px; border-radius: 0 12px 12px 0; color: #d8cfa8; }
+  .callout b { color: var(--warn); }
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: #64748b; font-size: 13.5px; }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Open hardware · ESP32 · MIT</div>
+  <h1>Measure a real <span class="mono">milliohm</span> number.<br>Not a guess.</h1>
+  <p class="lead">
+    An open-source AC internal-resistance meter for 18650 and 21700 cells. Kelvin four-wire
+    sensing, 1&nbsp;kHz excitation, synchronous (lock-in) detection in firmware — so probe and
+    contact resistance stops being part of the answer.
+  </p>
+
+  <div class="badges">
+    <span class="badge ok">firmware compiles</span>
+    <span class="badge ok">tests assert</span>
+    <span class="badge warn">hardware not yet verified</span>
+    <span class="badge info">looking for one volunteer with a bench</span>
+    <span class="badge">MIT</span>
+  </div>
+
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/daniil43ru/esp32-acir-meter">Source on GitHub →</a>
+    <a class="btn ghost" href="https://github.com/daniil43ru/esp32-acir-meter/blob/main/docs/SCHEMATIC.md">Review the schematic</a>
+    <a class="btn ghost" href="https://github.com/daniil43ru/esp32-acir-meter/issues/new?template=hardware-report.md">I built it — report readings</a>
+  </div>
+
+  <div class="grid three">
+    <div class="stat"><div class="v">0.98 mΩ</div><div class="l">resolution per ADC LSB</div></div>
+    <div class="stat"><div class="v">17.2 mA</div><div class="l">peak excitation current</div></div>
+    <div class="stat"><div class="v">2000</div><div class="l">samples per lock-in window</div></div>
+  </div>
+
+  <h2>The problem with the usual DIY approach</h2>
+  <div class="card">
+    <p style="margin-top:0">
+      Most hobby IR meters use a <b>load pulse</b>: push a current step into the cell, watch the
+      voltage sag, divide. The trouble is that the sag also includes the contact resistance of
+      your spring holders — 5–20&nbsp;mΩ on an 18650, which is the same order as the quantity
+      being measured. <b>A 50% error is typical</b> and it looks like perfectly good data.
+    </p>
+    <p style="margin-bottom:0">
+      This project measures with a <b>Kelvin connection</b>: current flows through one pair of
+      leads, voltage is sensed across a second pair that carries no current. Lead and contact
+      resistance drops out physically rather than by calibration.
+    </p>
+  </div>
+
+  <h2>Signal chain</h2>
+      <pre><span class="c">// excitation path (current)</span>
+GPIO25 ── 1 kHz square ── C<span class="v">dc</span> 10µF ── R<span class="v">force</span> ── R<span class="v">shunt</span> ──┬── cell +
+                                                              │
+                                                            [ Ri ]
+                                                              │
+                                                       cell − ── GND
+
+<span class="c">// sense path (no current, so no lead-resistance error)</span>
+cell + ── C<span class="v">in</span> 1µF ── LM358 IN+ ── ×48 ── GPIO35 ── <span class="k">lock-in I/Q</span></pre>
+
+  <h2>What the firmware actually does</h2>
+  <div class="grid two">
+    <div class="card">
+      <ul class="tight">
+        <li><b>Lock-in detection</b> over 2000 samples — the naive min/max envelope overestimates
+        by up to <b>+95%</b> at 5&nbsp;mV of noise.</li>
+        <li><b>I/Q offset removal</b> — a vector subtraction, not a scalar one.</li>
+        <li><b>Median of 5</b> readings to kill impulsive interference.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <ul class="tight">
+        <li><b>Conversion against a reference resistor</b> (<code>K_CAL</code>) to absorb part tolerances.</li>
+        <li><b>Diagnostics screen</b>: phase, signal level, ADC saturation flag.</li>
+        <li><b>OLED UI</b>: main / voltmeter / diagnostics / calibrate.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Verify it without a soldering iron</h2>
+  <div class="card">
+    <p style="margin-top:0;color:#c3cfdf">The signal math is checked by four Python tools that run on any laptop:</p>
+    <pre>python tools/model_check.py    <span class="c"># signal chain, resolution, calibration effect</span>
+python tools/test_lockin.py    <span class="c"># asserts on the detector — exits 1 on failure</span>
+python tools/test_settling.py  <span class="c"># op-amp settling vs measurement window</span>
+python tools/test_timing.py    <span class="c"># what happens when the loop overruns</span></pre>
+  </div>
+
+  <h2>Honest about what is not done</h2>
+  <div class="callout">
+    <b>This has never been assembled on a breadboard.</b> The circuit is a best-effort design and
+    the author says so up front. Known issues are listed, not hidden: no over-voltage clamp on the
+    sense pin, "3.5-wire" rather than a true 4-wire return, an LM358 that is at the edge of what
+    milliohm work wants, assumed rather than measured GPIO resistance.
+  </div>
+  <p style="color:#9aa9bd">
+    That is the whole point of publishing it: one person with a bench and a multimeter can turn
+    this from a design into a working instrument. If that is you, the most useful thing you can
+    do is <a href="https://github.com/daniil43ru/esp32-acir-meter/issues/new?template=hardware-report.md">open a hardware report</a>.
+  </p>
+
+  <footer>
+    <a href="https://github.com/daniil43ru/esp32-acir-meter">github.com/daniil43ru/esp32-acir-meter</a>
+    · MIT licensed · prior art credited in the README
+  </footer>
+</div>
+</body>
+</html>
