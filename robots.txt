@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://daniil43ru.github.io/esp32-acir-meter-demo/sitemap.xml
